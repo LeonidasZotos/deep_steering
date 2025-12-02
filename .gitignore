@@ -165,3 +165,5 @@ deep_steering_env
 
 results/
 plots/
+evaluation_descriptions/
+settings.json

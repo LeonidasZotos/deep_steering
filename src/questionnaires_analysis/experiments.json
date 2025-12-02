@@ -1,0 +1,34 @@
+{
+    "experiment_1": {
+        "key1": {
+            "description": "Q4B-NONE",
+            "experiment_id": "2025_12_02_13_42_07"
+        },
+        "key2": {
+            "description": "Q4B-AUTH-RIGHT",
+            "experiment_id": "2025_12_02_13_07_50"
+        },
+        "key3": {
+            "description": "Q14B-NONE",
+            "experiment_id": "2025_12_02_13_02_49"
+        },
+        "key4": {
+            "description": "Q14B-AUTH-RIGHT",
+            "experiment_id": "2025_12_02_13_05_34"
+        }
+    },
+    "experiment_2": {
+        "key1": {
+            "description": "",
+            "experiment_id": ""
+        },
+        "key2": {
+            "description": "",
+            "experiment_id": ""
+        },
+        "key3": {
+            "description": "",
+            "experiment_id": ""
+        }
+    }
+}
