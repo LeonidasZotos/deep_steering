@@ -19,16 +19,16 @@
     },
     "experiment_2": {
         "key1": {
-            "description": "",
-            "experiment_id": ""
+            "description": "auth_left_base",
+            "experiment_id": "2025_12_02_16_53_11"
         },
         "key2": {
-            "description": "",
-            "experiment_id": ""
+            "description": "auth_right_base",
+            "experiment_id": "2025_12_02_16_54_38"
         },
         "key3": {
-            "description": "",
-            "experiment_id": ""
+            "description": "lib_left",
+            "experiment_id": "2025_12_02_16_54_59"
         }
     }
 }

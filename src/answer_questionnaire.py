@@ -523,6 +523,7 @@ def export_results(
         "test_mode": args['test_mode'],
         "questionnaire": args['questionnaire'],
         "model_name": model_name,
+        "model_type": "Base" if 'base' in args['model'] else "Chat",
         "prompt_style": args['prompt_style'],
         "context_column_name": args['context_column'],
         "system_prompt": args['system_prompt'],
@@ -554,7 +555,7 @@ def main() -> None:
             break
         time.sleep(1)
 
-    output_file_name = root_dir + "results/" + args['questionnaire'] + "/" + model_name.split("/")[1] + "/" + timestamp + "/results.csv"
+    output_file_name = root_dir + "results/" + model_name.split("/")[1] + "/" + timestamp + "/results.csv"
 
     system_prompt = None
     personas_file = 'personas_base.json' if 'base' in model_name_short else 'personas_chat.json'
@@ -567,6 +568,7 @@ def main() -> None:
     print("Test mode: ", args['test_mode'])
     print("Questionnaire: ", args['questionnaire'])
     print("Model: ", model_name)
+    print("Model Type: ", "Base" if 'base' in model_name_short else "Chat/Instruction-Tuned")
     print("System Prompt: ", system_prompt)
     print("Prompt style: ", args['prompt_style'])
     print("Context column name: ", args['context_column'])
