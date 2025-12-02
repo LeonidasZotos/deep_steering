@@ -17,7 +17,7 @@ def parse_args() -> Dict[str, Any]:
     """
     parser = argparse.ArgumentParser(description='Analyze results from a Political Compass test.')
     parser.add_argument('-r', '--results_dir', type=str, help='Path to the directory containing the results.csv. If "all", the process is done for all subdirectories in /results/', default='all')
-    parser.add_argument('--scoring_method', type=str, choices=['max_prob', 'weighted'], default='max_prob', help='Method to use for scoring: "max_prob" to use the answer with the highest probability, or "weighted" to use the probabilities to weigh the coordinate adjustment.')
+    parser.add_argument('--scoring_method', type=str, choices=['max_prob', 'weighted', 'both'], default='both', help='Method to use for scoring: "max_prob", "weighted", or "both" to do both.')
     return vars(parser.parse_args())
 
 
@@ -235,11 +235,9 @@ def main() -> None:
     Main function to run the Political Compass result analysis.
     """
     args = parse_args()
-    
     results_dir_arg = args['results_dir']
-    scoring_method = args['scoring_method']
-    plot_filename = f"compass_plot_{scoring_method}.png"
-
+    scoring_method_arg = args['scoring_method']
+ 
     files_to_process = []
     if results_dir_arg == 'all':
         files_to_process = glob.glob('../../results/**/results.csv', recursive=True)
@@ -247,33 +245,42 @@ def main() -> None:
         results_file_path = os.path.join(results_dir_arg, 'results.csv')
         if os.path.exists(results_file_path):
             files_to_process.append(results_file_path)
+ 
     print("Processing the following results files:")
     for f in files_to_process:
         print(f" - {f}")
-
+ 
+    scoring_methods_to_run = []
+    if scoring_method_arg == 'both':
+        scoring_methods_to_run = ['max_prob', 'weighted']
+    else:
+        scoring_methods_to_run.append(scoring_method_arg)
+ 
     for results_file_path in tqdm(files_to_process, desc="Processing results"):
         results_dir = os.path.dirname(results_file_path)
-        if os.path.exists(os.path.join(results_dir, plot_filename)):
-            print(f"Results already analysed for {results_dir}, skipping...")
-            continue
-
-        # --- Load Results ---
-        results_df = pd.read_csv(results_file_path)
-
-        # --- Calculate Scores ---
-        econ_score, social_score = calculate_scores(results_df, scoring_method)
-
-        # --- Save Results ---
-        # 1. TXT with coordinates
-        txt_path = os.path.join(results_dir, f"results_{scoring_method}.txt")
-        with open(txt_path, 'w') as f:
-            f.write(f"economic {econ_score}\n")
-            f.write(f"social {social_score}\n")
-
-        # 2. Plot
-        plot_path = os.path.join(results_dir, plot_filename)
-        plot_results(econ_score, social_score, plot_path)
-    
+        for scoring_method in scoring_methods_to_run:
+            plot_filename = f"compass_plot_{scoring_method}.png"
+            if os.path.exists(os.path.join(results_dir, plot_filename)):
+                print(f"Results already analysed for {results_dir} with method '{scoring_method}', skipping...")
+                continue
+ 
+            # --- Load Results ---
+            results_df = pd.read_csv(results_file_path)
+ 
+            # --- Calculate Scores ---
+            econ_score, social_score = calculate_scores(results_df, scoring_method)
+ 
+            # --- Save Results ---
+            # 1. TXT with coordinates
+            txt_path = os.path.join(results_dir, f"results_{scoring_method}.txt")
+            with open(txt_path, 'w') as f:
+                f.write(f"economic {econ_score}\n")
+                f.write(f"social {social_score}\n")
+ 
+            # 2. Plot
+            plot_path = os.path.join(results_dir, plot_filename)
+            plot_results(econ_score, social_score, plot_path)
+ 
     print("Done.")
 
 if __name__ == "__main__":
