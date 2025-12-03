@@ -55,7 +55,7 @@ def parse_args() -> Dict[str, Any]:
                         help='Which prompt formulation to use, (no_context,  context_before_instruction, context_after_instruction)', default="no_context")
     parser.add_argument('-c', '--context_column', type=str,
                         help='Column Name of optional context for each question (e.g., "question_context" or "" for no context)', default="")
-    parser.add_argument('-sp', '--system_prompt', type=str,
+    parser.add_argument('-per', '--persona', type=str,
                         help='A key to prompt the system from a file of personas. Default is "generic".', default='generic')
     parser.add_argument('-np', '--number_permutations', type=int,
                         help='Number of choice permutations, defaults to 10. Use all combinations if there are fewer than the passed value. If it is likert scale, only two are used (original and reverse)', default=10)
@@ -248,7 +248,7 @@ def generate_uncertainty_for_questionnaire(
     tokenizer: AutoTokenizer,
     questions_set: pd.DataFrame,
     args: Dict[str, Any],
-    system_prompt: str = None
+    persona: str = None
 ) -> pd.DataFrame:
     """Calculates uncertainty measures for a set of questions and adds them to the DataFrame.
     
@@ -339,11 +339,11 @@ def generate_uncertainty_for_questionnaire(
                                                   prompt_style=args['prompt_style'],
                                                   is_base_model=True)
             # The persona is prepended to the user content.
-            formatted_prompt = f"{system_prompt}\n{user_content}"
+            formatted_prompt = f"{persona}\n{user_content}"
         else:
             # For chat models, we use the existing message format.
             messages = [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": persona},
                 {"role": "user", "content": format_question_string(question_with_options, context,
                                                                    test_mode=args['test_mode'],
                                                                    prompt_style=args['prompt_style'],
@@ -526,7 +526,7 @@ def export_results(
         "model_type": "Base" if 'base' in args['model'] else "Chat",
         "prompt_style": args['prompt_style'],
         "context_column_name": args['context_column'],
-        "system_prompt": args['system_prompt'],
+        "persona": args['persona'],
         "number_of_choice_permutations": args['number_permutations'],
         "permutation_strategy": args['permutation_strategy'],
         "use_vllm": args['use_vllm'],
@@ -557,11 +557,11 @@ def main() -> None:
 
     output_file_name = root_dir + "results/" + model_name.split("/")[1] + "/" + timestamp + "/results.csv"
 
-    system_prompt = None
+    persona = None
     personas_file = 'personas_base.json' if 'base' in model_name_short else 'personas_chat.json'
     with open(root_dir + 'steering_techniques/prompting/' + personas_file, 'r') as f:
         personas = json.load(f)
-        system_prompt = personas[args['system_prompt']]['persona']
+        persona = personas[args['persona']]['persona']
 
     print("Running with specs:")
     print("Timestamp: ", timestamp)
@@ -569,7 +569,7 @@ def main() -> None:
     print("Questionnaire: ", args['questionnaire'])
     print("Model: ", model_name)
     print("Model Type: ", "Base" if 'base' in model_name_short else "Chat/Instruction-Tuned")
-    print("System Prompt: ", system_prompt)
+    print("Persona: ", persona)
     print("Prompt style: ", args['prompt_style'])
     print("Context column name: ", args['context_column'])
     print("Number of choice permutations: ", args['number_permutations'])
@@ -625,7 +625,7 @@ def main() -> None:
 
     print("-------------Doing Inference-------------")
     questions_set_with_probs = generate_uncertainty_for_questionnaire(
-        model, tokenizer, questions_set, args, system_prompt=system_prompt)
+        model, tokenizer, questions_set, args, persona=persona)
 
     print("-------------Saving Results-------------")
     export_results(questions_set_with_probs, args, timestamp, model_name, output_file_name)

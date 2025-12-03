@@ -15,7 +15,7 @@ def parse_args() -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: A dictionary of parsed arguments.
     """
-    parser = argparse.ArgumentParser(description='Analyze results from a Political Compass test.')
+    parser = argparse.ArgumentParser(description='Analyze results from a Political Compass test. It should be executed from src/ if --results_dir is not used! ')
     parser.add_argument('-r', '--results_dir', type=str, help='Path to the directory containing the results.csv. If "all", the process is done for all subdirectories in /results/', default='all')
     parser.add_argument('--scoring_method', type=str, choices=['max_prob', 'weighted', 'both'], default='both', help='Method to use for scoring: "max_prob", "weighted", or "both" to do both.')
     return vars(parser.parse_args())
@@ -240,7 +240,7 @@ def main() -> None:
  
     files_to_process = []
     if results_dir_arg == 'all':
-        files_to_process = glob.glob('../../results/**/results.csv', recursive=True)
+        files_to_process = glob.glob('../results/**/results.csv', recursive=True)
     else:
         results_file_path = os.path.join(results_dir_arg, 'results.csv')
         if os.path.exists(results_file_path):
