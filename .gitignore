@@ -162,8 +162,8 @@ cython_debug/
 #.idea/
 
 deep_steering_env
-
-results/
-plots/
-evaluation_descriptions/
+results/*
+!results/*.ipynb
+plots/*
+evaluation_descriptions/*
 settings.json
