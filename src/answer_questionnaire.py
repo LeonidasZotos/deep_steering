@@ -563,7 +563,7 @@ def main() -> None:
     print("Questionnaire: ", args['questionnaire'])
     print("Model: ", model_name)
     print("Model Type: ", "Base" if 'base' in model_name_short else "Chat/Instruction-Tuned")
-    print("Persona: ", persona)
+    print("Persona: ", args['persona'])
     print("Prompt context: ", args['prompt_context'])
     print("Context column name: ", args['context_column'])
     print("Number of choice permutations: ", args['number_permutations'])
