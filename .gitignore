@@ -167,3 +167,4 @@ results/*
 plots/*
 evaluation_descriptions/*
 settings.json
+*.out

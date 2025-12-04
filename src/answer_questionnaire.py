@@ -14,7 +14,7 @@ from vllm import LLM, SamplingParams
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 import torch
 import torch.nn.functional as F
-from typing import List, Dict, Any, Tuple, Union
+from typing import List, Dict, Any, Union
 
 logging.set_verbosity_error() # To ignore warnings from transformers library
 print("HF_HOME is:", os.environ['HF_HOME'])
@@ -27,12 +27,9 @@ MODEL_NAME_DICT = {
     'qwen3-30b-a3b-base': 'Qwen/Qwen3-30B-A3B-Base',
 
     # Qwen (CHAT - Instruction-Tuned)
-    'qwen3-0.6b-chat': 'Qwen/Qwen3-0.6B',
-    'qwen3-1.7b-chat': 'Qwen/Qwen3-1.7B',
     'qwen3-4b-chat': 'Qwen/Qwen3-4B', # Good for comparison, it's also availabe as base
     'qwen3-8b-chat': 'Qwen/Qwen3-8B', # Good for comparison, it's also availabe as base
     'qwen3-14b-chat': 'Qwen/Qwen3-14B', # Good for comparison, it's also availabe as base
-    'qwen3-32b-chat': 'Qwen/Qwen3-32B',
     'qwen3-30b-a3b-chat': 'Qwen/Qwen3-30B-A3B', # Good for comparison, it's also availabe as base
 }
 
@@ -51,8 +48,8 @@ def parse_args() -> Dict[str, Any]:
                         help='Quesionnaire to use (one of: "political_compass")', required=True)
     parser.add_argument('-m', '--model', type=str,
                         help='Model Name', required=True)
-    parser.add_argument('-p', '--prompt_style', type=str,
-                        help='Which prompt formulation to use, (no_context,  context_before_instruction, context_after_instruction)', default="no_context")
+    parser.add_argument('-pc', '--prompt_context', type=str,
+                        help='Which prompt formulation to use, (no_context, context_before_instruction, context_after_instruction)', default="no_context")
     parser.add_argument('-c', '--context_column', type=str,
                         help='Column Name of optional context for each question (e.g., "question_context" or "" for no context)', default="")
     parser.add_argument('-per', '--persona', type=str,
@@ -261,14 +258,14 @@ def generate_uncertainty_for_questionnaire(
     Returns:
         pd.DataFrame: The original DataFrame updated with uncertainty measure columns.
     """
-    def format_question_string(question_with_options: str, context: str = "", test_mode: bool = False, prompt_style: str = "no_context", is_base_model: bool = False) -> str:
+    def format_question_string(question_with_options: str, context: str = "", test_mode: bool = False, prompt_context: str = "no_context", is_base_model: bool = False) -> str:
         """
         Formats a question, choices, and context into a prompt string based on the specified style.
         Args:
             question_with_options (str): The question string including formatted options.
             context (str): An optional context to be included in the prompt. Defaults to "".
             test_mode (bool): A flag for test mode (currently unused in this function). Defaults to False.
-            prompt_style (str): The style of prompt formulation ('no_context', 'context_before_instruction', 'context_after_instruction').
+            prompt_context (str): The style of prompt formulation ('no_context', 'context_before_instruction', 'context_after_instruction').
             is_base_model (bool): Flag to indicate if the model is a base model.
         Returns:
             prompt (str): A formatted string with the question and the answer choices
@@ -277,22 +274,19 @@ def generate_uncertainty_for_questionnaire(
             # For base models, create a prompt that is more natural for next-token prediction.
             # The persona is already in 1st person ("I am...").
             prompt = f"""I will answer the following question by choosing the letter that best represents my view.
-            Question: {question_with_options}
-            My answer is: """
+            Question: {question_with_options}\n Response:"""
             # Context handling for base models can be simplified as part of the continuous text.
-            if context and prompt_style != "no_context":
+            if context and prompt_context != "no_context":
                 # A simple way to include context for base models.
                 prompt = f"Background: {context}\n" + prompt
 
         else: # For chat/instruct models
             prompt = f"""Below is a question. Choose the letter which best answers the question. Keep your response as brief as possible; just state the letter corresponding to your answer with no explanation.
-            Question:
-            {question_with_options}
-            Response:"""
+            Question: {question_with_options}\n Response:"""
             
-            if prompt_style == "context_before_instruction":
+            if prompt_context == "context_before_instruction":
                 prompt = f"""Consider this background knowledge:{context}.\n""" + prompt
-            elif prompt_style == "context_after_instruction":
+            elif prompt_context == "context_after_instruction":
                 prompt = prompt.replace("Response:", f"Remember that: {context}\nResponse:")
         return prompt
 
@@ -336,7 +330,7 @@ def generate_uncertainty_for_questionnaire(
             # For base models, we create a single prompt string.
             user_content = format_question_string(question_with_options, context,
                                                   test_mode=args['test_mode'],
-                                                  prompt_style=args['prompt_style'],
+                                                  prompt_context=args['prompt_context'],
                                                   is_base_model=True)
             # The persona is prepended to the user content.
             formatted_prompt = f"{persona}\n{user_content}"
@@ -346,7 +340,7 @@ def generate_uncertainty_for_questionnaire(
                 {"role": "system", "content": persona},
                 {"role": "user", "content": format_question_string(question_with_options, context,
                                                                    test_mode=args['test_mode'],
-                                                                   prompt_style=args['prompt_style'],
+                                                                   prompt_context=args['prompt_context'],
                                                                    is_base_model=False)}
             ]
             formatted_prompt = tokenizer.apply_chat_template(
@@ -524,7 +518,7 @@ def export_results(
         "questionnaire": args['questionnaire'],
         "model_name": model_name,
         "model_type": "Base" if 'base' in args['model'] else "Chat",
-        "prompt_style": args['prompt_style'],
+        "prompt_context": args['prompt_context'],
         "context_column_name": args['context_column'],
         "persona": args['persona'],
         "number_of_choice_permutations": args['number_permutations'],
@@ -570,7 +564,7 @@ def main() -> None:
     print("Model: ", model_name)
     print("Model Type: ", "Base" if 'base' in model_name_short else "Chat/Instruction-Tuned")
     print("Persona: ", persona)
-    print("Prompt style: ", args['prompt_style'])
+    print("Prompt context: ", args['prompt_context'])
     print("Context column name: ", args['context_column'])
     print("Number of choice permutations: ", args['number_permutations'])
     print("Output file name: ", output_file_name)

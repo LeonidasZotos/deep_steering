@@ -1,0 +1,20 @@
+{
+  "generic": {
+    "examples": "Question: Taxation of the wealthy to fund social programs is fundamentally a form of theft. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: -\n Question: Society functions best when people adhere to traditional gender roles. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: - \n "
+  },
+  "centrist": {
+    "examples": "Question: Taxation of the wealthy to fund social programs is fundamentally a form of theft. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: -\n Question: Society functions best when people adhere to traditional gender roles. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: - \n "
+  },
+  "auth_left": {
+    "examples": "Question: Taxation of the wealthy to fund social programs is fundamentally a form of theft. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: A\n Question: Society functions best when people adhere to traditional gender roles. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: D \n "
+  },
+  "auth_right": {
+    "examples": "Question: Taxation of the wealthy to fund social programs is fundamentally a form of theft. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: D\n Question: Society functions best when people adhere to traditional gender roles. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: D \n "
+  },
+  "lib_left": {
+    "examples": "Question: Taxation of the wealthy to fund social programs is fundamentally a form of theft. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: A\n Question: Society functions best when people adhere to traditional gender roles. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: A \n "
+  },
+  "lib_right": {
+    "examples": "Question: Taxation of the wealthy to fund social programs is fundamentally a form of theft. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: D\n Question: Society functions best when people adhere to traditional gender roles. A. Strongly Disagree B. Disagree C. Agree D. Strongly Agree\n Response: A \n "
+  }
+}
