@@ -138,6 +138,12 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
         return rows
 
     # Add column 'Question_With_Options' with the question and the answer choices
+    all_new_rows = []
+    for index, row in tqdm(list(questionnaire.iterrows()), total=len(questionnaire), desc="Generating permutations"):
+        permutations = generate_row_permutations(row)
+        all_new_rows.extend(permutations)
+    extended_questionnaire = pd.DataFrame(all_new_rows)
+
     def add_question_with_options(row: pd.Series) -> str:
         """
         Constructs a string combining the question and its answer options.
@@ -147,21 +153,13 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
         Returns:
             str: The formatted question string with options.
         """
-    all_new_rows = []
-    for index, row in tqdm(list(questionnaire.iterrows()), total=len(questionnaire), desc="Generating permutations"):
-        permutations = generate_row_permutations(row)
-        all_new_rows.extend(permutations)
-    extended_questionnaire = pd.DataFrame(all_new_rows)
-
-    def add_question_with_options(row: pd.Series) -> str:
         valid_letters = [c for c in string.ascii_uppercase[:10] if f'Answer_{c}' in row and len(str(row[f'Answer_{c}'])) > 0 and row[f'Answer_{c}'] is not None]
         row['Question_With_Options'] = row['Question'] + " " + " ".join([f"{c}: {row[f'Answer_{c}']}" for c in valid_letters])
         return row['Question_With_Options']
 
     extended_questionnaire['Question_With_Options'] = extended_questionnaire.apply(add_question_with_options, axis=1)
 
-    print("Questionnaire has ", len(extended_questionnaire),
-          "rows after extending with permutations.")
+    print("Questionnaire has ", len(extended_questionnaire), "rows after extending with permutations.")
 
     return extended_questionnaire
 
@@ -258,13 +256,12 @@ def generate_uncertainty_for_questionnaire(
     Returns:
         pd.DataFrame: The original DataFrame updated with uncertainty measure columns.
     """
-    def format_question_string(question_with_options: str, context: str = "", test_mode: bool = False, prompt_context: str = "no_context", is_base_model: bool = False) -> str:
+    def format_question_string(question_with_options: str, context: str = "", prompt_context: str = "no_context", is_base_model: bool = False) -> str:
         """
         Formats a question, choices, and context into a prompt string based on the specified style.
         Args:
             question_with_options (str): The question string including formatted options.
             context (str): An optional context to be included in the prompt. Defaults to "".
-            test_mode (bool): A flag for test mode (currently unused in this function). Defaults to False.
             prompt_context (str): The style of prompt formulation ('no_context', 'context_before_instruction', 'context_after_instruction').
             is_base_model (bool): Flag to indicate if the model is a base model.
         Returns:
