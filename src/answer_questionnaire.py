@@ -10,7 +10,6 @@ import os
 import random
 import string
 import json
-from vllm import LLM, SamplingParams
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 import torch
 import torch.nn.functional as F
@@ -44,6 +43,7 @@ def parse_args() -> Dict[str, Any]:
         description='The LLM takes the questionnaire and its certainty is measured for each choice.')
     parser.add_argument('-t', '--test_mode', action="store_true",
                         help='Test mode only uses 3 questions.', default=False)
+    parser.add_argument('-q', '--quiet_mode', action='store_true', help='Disable tqdm progress bars')
     parser.add_argument('-q', '--questionnaire', type=str,
                         help='Quesionnaire to use (one of: "political_compass")', required=True)
     parser.add_argument('-m', '--model', type=str,
@@ -56,12 +56,8 @@ def parse_args() -> Dict[str, Any]:
                         help='A key to prompt the system from a file of personas. Default is "generic".', default='generic')
     parser.add_argument('-np', '--number_permutations', type=int,
                         help='Number of choice permutations, defaults to 10. Use all combinations if there are fewer than the passed value. If it is likert scale, only two are used (original and reverse)', default=10)
-    parser.add_argument('-vllm', '--use_vllm', action=argparse.BooleanOptionalAction,
-                        help='If true, uses vLLM for inference. If false, uses HuggingFace transformers. Default False')
     parser.add_argument('-ps', '--permutation_strategy', type=str, choices=['random', 'reverse'],
                         help='Strategy for permutations. "random" for random permutations, "reverse" for original and reversed order.', default='reverse')
-    parser.add_argument('-gpu_util', '--gpu_memory_utilization', type=float,
-                        help='VRAM utilisation (if vLLM is enabled) (gpu_memory_utilization, 0-1)', default=0.9)
     parser.add_argument('-b', '--batch_size', type=int,
                         help='Batch size for inference when using HuggingFace transformers. Default 64', default=64)
 
@@ -102,7 +98,7 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
             if len(choices) > 1:
                 permutations.append(tuple(reversed(choices)))
         else: # random strategy
-            num_of_possible_permutations = math.factorial(len(choices))
+            num_of_possible_permutations = math.factorial(len( choices))
             num_permutations_to_generate = min(num_of_possible_permutations, num_choice_permutations) 
             if num_of_possible_permutations == num_permutations_to_generate:
                 permutations = list(itertools.permutations(choices))
@@ -113,6 +109,10 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
                 while len(unique_permutations_set) < num_permutations_to_generate:
                     new_permutation = tuple(random.sample(choices, len(choices)))
                     unique_permutations_set.add(new_permutation)
+                    counter += 1
+                    if counter > 100000:
+                        print(f"ERROR: Got stuck in generating permutations for row with id: {row['id']}. Check that there are no duplicate choices. Choices: {choices}")
+                        return None
 
                 permutations = list(unique_permutations_set) # This will be in a random order
 
@@ -139,7 +139,7 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
 
     # Add column 'Question_With_Options' with the question and the answer choices
     all_new_rows = []
-    for index, row in tqdm(list(questionnaire.iterrows()), total=len(questionnaire), desc="Generating permutations"):
+    for index, row in tqdm(list(questionnaire.iterrows()), total=len(questionnaire), desc="Generating permutations", disable=args['quiet_mode']):
         permutations = generate_row_permutations(row)
         all_new_rows.extend(permutations)
     extended_questionnaire = pd.DataFrame(all_new_rows)
@@ -239,7 +239,7 @@ def compress_and_average(group: pd.DataFrame) -> pd.DataFrame:
     return result
 
 def generate_uncertainty_for_questionnaire(
-    model: Union[LLM, AutoModelForCausalLM],
+    model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
     questions_set: pd.DataFrame,
     args: Dict[str, Any],
@@ -248,7 +248,7 @@ def generate_uncertainty_for_questionnaire(
     """Calculates uncertainty measures for a set of questions and adds them to the DataFrame.
     
     Args:
-        model (Union[LLM, AutoModelForCausalLM]): The language model instance (vLLM or HuggingFace).
+        model (AutoModelForCausalLM): The language model instance.
         tokenizer (AutoTokenizer): The tokenizer instance.
         questions_set (pd.DataFrame): A DataFrame containing the questions and answer choices.
         args (Dict[str, Any]): A dictionary of script arguments.
@@ -349,61 +349,32 @@ def generate_uncertainty_for_questionnaire(
 
     probs = None
 
-    if not args['use_vllm']:
-        all_scores = []
-        for i in tqdm(range(0, len(formatted_prompts), args['batch_size'])):
-            batch_prompts = formatted_prompts[i: i + args['batch_size']]
-            inputs = tokenizer(
-                batch_prompts,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-            ).to(model.device)
-            with torch.no_grad():
-                outputs = model.generate(
-                    **inputs,
-                    max_new_tokens=1,
-                    do_sample=False,  # Greedy decoding, equivalent to temperature=0
-                    output_scores=True,
-                    return_dict_in_generate=True
-                )
-            # scores is a tuple, get the first (and only) element
-            scores_tensor = outputs.scores[0]
-            # convert to probs
-            scores_tensor = F.softmax(scores_tensor, dim=-1)
-            all_scores.append(scores_tensor.cpu())
-        probs = torch.cat(all_scores, dim=0)
-    else:  # Using vLLM
-        sampling_params = SamplingParams(
-            temperature=0,
-            max_tokens=1,
-            logprobs=len(tokenizer)
-        )
-        outputs = model.generate(formatted_prompts, sampling_params)
+    all_scores = []
+    for i in tqdm(range(0, len(formatted_prompts), args['batch_size']), disable=args['quiet_mode']):
+        batch_prompts = formatted_prompts[i: i + args['batch_size']]
+        inputs = tokenizer(
+            batch_prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+        ).to(model.device)
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=1,
+                do_sample=False,  # Greedy decoding, equivalent to temperature=0
+                output_scores=True,
+                return_dict_in_generate=True
+            )
+        # scores is a tuple, get the first (and only) element
+        scores_tensor = outputs.scores[0]
+        # convert to probs
+        scores_tensor = F.softmax(scores_tensor, dim=-1)
+        all_scores.append(scores_tensor.cpu())
+    probs = torch.cat(all_scores, dim=0)
+    
 
-        # --- vLLM Normalization ---
-        num_prompts = len(outputs)
-        vocab_size = max(outputs[0].outputs[0].logprobs[0].keys()) + 1
-
-        # Initialize with 0s for tokens not in the logprobs dict
-        log_probs_tensor = torch.zeros(
-            (num_prompts, vocab_size), dtype=torch.float16)
-
-        for i, output in enumerate(outputs):
-            # The logprobs for the first generated token
-            logprobs_dict = output.outputs[0].logprobs[0]
-
-            # Get all token IDs and their corresponding logprobs
-            token_ids = list(logprobs_dict.keys())
-            logprob_values = [logprobs_dict[tid].logprob for tid in token_ids]
-
-            # Place these values into our tensor
-            log_probs_tensor[i, token_ids] = torch.tensor(
-                logprob_values, dtype=torch.float16)
-        # Convert logprobs to probs
-        probs = torch.exp(log_probs_tensor)
-
-    # At this point, regardless of vllm or HF, probs is a (num_prompts, vocab_size) tensor with the probabilities of the first generated token for each question
+    # At this point, probs is a (num_prompts, vocab_size) tensor with the probabilities of the first generated token for each question
 
     # Move to CPU for easier pandas/numpy integration if it's on a GPU
     probs = probs.cpu()
@@ -520,9 +491,7 @@ def export_results(
         "persona": args['persona'],
         "number_of_choice_permutations": args['number_permutations'],
         "permutation_strategy": args['permutation_strategy'],
-        "use_vllm": args['use_vllm'],
-        "gpu_memory_utilization": args['gpu_memory_utilization'] if args['use_vllm'] else None,
-        "hf_batch_size": args['batch_size'] if not args['use_vllm'] else None,
+        "hf_batch_size": args['batch_size'],
         "output_file_name": output_file_name,
     }
     with open(output_file_name.replace('results.csv', 'config.json'), 'w') as f:
@@ -566,11 +535,7 @@ def main() -> None:
     print("Number of choice permutations: ", args['number_permutations'])
     print("Output file name: ", output_file_name)
     print("Permutation strategy: ", args['permutation_strategy'])
-    print("Using Engine: ", "vLLM" if args['use_vllm'] else "HF Transformers")
-    if args['use_vllm']:
-        print("GPU VRAM Utilisation: ", args['gpu_memory_utilization'])
-    elif not args['use_vllm']:
-        print("Batch size: ", args['batch_size'])
+    print("Batch size: ", args['batch_size'])
     
     # Make sure the results directory exists
     os.makedirs(root_dir + 'results/' + model_name.split("/")[1] + '/' + timestamp, exist_ok=True)
@@ -587,32 +552,16 @@ def main() -> None:
     print("-------------Initialising LLM-------------")
     # We get the config to set the vocab size
     model, tokenizer = None, None
-    if not args['use_vllm']:
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_name, trust_remote_code=True, padding_side="left")
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-            torch_dtype=torch.bfloat16,
-            device_map="auto",
-        )
-        model.eval()
 
-    else:
-        # Using vLLM
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, padding_side="left")
-        vocab_size = len(tokenizer)
-        context_size_requirement = get_context_size_requirement(questions_set, tokenizer, args['context_column'])
-
-        model = LLM(
-            model=model_name,
-            task="generate",
-            trust_remote_code=True,
-            max_logprobs=vocab_size,
-            tensor_parallel_size=torch.cuda.device_count(),
-            gpu_memory_utilization=args['gpu_memory_utilization'],
-            max_model_len=context_size_requirement,
-        )
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, trust_remote_code=True, padding_side="left")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        trust_remote_code=True,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+    )
+    model.eval()
 
     print("-------------Doing Inference-------------")
     questions_set_with_probs = generate_uncertainty_for_questionnaire(
@@ -620,10 +569,6 @@ def main() -> None:
 
     print("-------------Saving Results-------------")
     export_results(questions_set_with_probs, args, timestamp, model_name, output_file_name)
-
-    if args['use_vllm']:
-        print("Gracefully turning off vLLM Engine...")
-        model.llm_engine.engine_core.shutdown()
 
     print("------------------Done!-----------------")
 
