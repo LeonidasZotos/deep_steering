@@ -106,6 +106,7 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
                 unique_permutations_set = set()
                 # Ensure the original order is always included
                 unique_permutations_set.add(tuple(choices))
+                counter = 0
                 while len(unique_permutations_set) < num_permutations_to_generate:
                     new_permutation = tuple(random.sample(choices, len(choices)))
                     unique_permutations_set.add(new_permutation)
@@ -326,7 +327,6 @@ def generate_uncertainty_for_questionnaire(
         if is_base_model:
             # For base models, we create a single prompt string.
             user_content = format_question_string(question_with_options, context,
-                                                  test_mode=args['test_mode'],
                                                   prompt_context=args['prompt_context'],
                                                   is_base_model=True)
             # The persona is prepended to the user content.
@@ -336,7 +336,6 @@ def generate_uncertainty_for_questionnaire(
             messages = [
                 {"role": "system", "content": persona},
                 {"role": "user", "content": format_question_string(question_with_options, context,
-                                                                   test_mode=args['test_mode'],
                                                                    prompt_context=args['prompt_context'],
                                                                    is_base_model=False)}
             ]
@@ -492,7 +491,6 @@ def export_results(
         "number_of_choice_permutations": args['number_permutations'],
         "permutation_strategy": args['permutation_strategy'],
         "hf_batch_size": args['batch_size'],
-        "output_file_name": output_file_name,
     }
     with open(output_file_name.replace('results.csv', 'config.json'), 'w') as f:
         json.dump(config, f, indent=4)
@@ -519,7 +517,7 @@ def main() -> None:
 
     persona = None
     personas_file = 'personas_base.json' if 'base' in model_name_short else 'personas_chat.json'
-    with open(root_dir + 'steering_techniques/prompting/' + personas_file, 'r') as f:
+    with open(root_dir + 'misc/steering_techniques/prompting/' + personas_file, 'r') as f:
         personas = json.load(f)
         persona = personas[args['persona']]['persona']
 
@@ -542,7 +540,7 @@ def main() -> None:
     
     print("------------Preparing Questionnaire------------")
     if args['questionnaire'] == 'political_compass':
-        questionnaire_file_path = root_dir + 'questionnaires/political_compass.csv'
+        questionnaire_file_path = root_dir + 'data/political_compass.csv'
     
     questions_set = pd.read_csv(questionnaire_file_path)
 
