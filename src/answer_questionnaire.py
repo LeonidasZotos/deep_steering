@@ -13,7 +13,7 @@ import json
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 import torch
 import torch.nn.functional as F
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any
 
 logging.set_verbosity_error() # To ignore warnings from transformers library
 print("HF_HOME is:", os.environ['HF_HOME'])
@@ -41,12 +41,12 @@ def parse_args() -> Dict[str, Any]:
     """
     parser = argparse.ArgumentParser(
         description='The LLM takes the questionnaire and its certainty is measured for each choice.')
-    parser.add_argument('-t', '--test_mode', action="store_true",
+    parser.add_argument('-tm', '--test_mode', action="store_true",
                         help='Test mode only uses 3 questions.', default=False)
-    parser.add_argument('-q', '--quiet_mode', action='store_true', help='Disable tqdm progress bars')
-    parser.add_argument('-q', '--questionnaire', type=str,
+    parser.add_argument('-qm', '--quiet_mode', action='store_true', help='Disable tqdm progress bars')
+    parser.add_argument('-qu', '--questionnaire', type=str,
                         help='Quesionnaire to use (one of: "political_compass")', required=True)
-    parser.add_argument('-m', '--model', type=str,
+    parser.add_argument('-mo', '--model', type=str,
                         help='Model Name', required=True)
     parser.add_argument('-pc', '--prompt_context', type=str,
                         help='Which prompt formulation to use, (no_context, context_before_instruction, context_after_instruction)', default="no_context")
@@ -58,7 +58,7 @@ def parse_args() -> Dict[str, Any]:
                         help='Number of choice permutations, defaults to 10. Use all combinations if there are fewer than the passed value. If it is likert scale, only two are used (original and reverse)', default=10)
     parser.add_argument('-ps', '--permutation_strategy', type=str, choices=['random', 'reverse'],
                         help='Strategy for permutations. "random" for random permutations, "reverse" for original and reversed order.', default='reverse')
-    parser.add_argument('-b', '--batch_size', type=int,
+    parser.add_argument('-bs', '--batch_size', type=int,
                         help='Batch size for inference when using HuggingFace transformers. Default 64', default=64)
 
     return dict(vars(parser.parse_args()))

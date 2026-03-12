@@ -15,11 +15,10 @@ def parse_args() -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: A dictionary of parsed arguments.
     """
-    parser = argparse.ArgumentParser(description='Analyze results from a Political Compass test. It should be executed from src/ if --results_dir is not used! ')
-    parser.add_argument('-r', '--results_dir', type=str, help='Path to the directory containing the results.csv. If "all", the process is done for all subdirectories in /results/', default='all')
+    parser = argparse.ArgumentParser(description='Analyze results from a Political Compass test.')
+    parser.add_argument('-r', '--results_dir', type=str, help='Path to the directory containing the results.csv. If "all", the process is done for all subdirectories in ../results/', default='all')
     parser.add_argument('--scoring_method', type=str, choices=['max_prob', 'weighted', 'both'], default='both', help='Method to use for scoring: "max_prob", "weighted", or "both" to do both.')
     return vars(parser.parse_args())
-
 
 
 def calculate_scores(results_df: pd.DataFrame, scoring_method: str) -> Tuple[float, float]:
@@ -271,13 +270,11 @@ def main() -> None:
             econ_score, social_score = calculate_scores(results_df, scoring_method)
  
             # --- Save Results ---
-            # 1. TXT with coordinates
             txt_path = os.path.join(results_dir, f"results_{scoring_method}.txt")
             with open(txt_path, 'w') as f:
                 f.write(f"economic {econ_score}\n")
                 f.write(f"social {social_score}\n")
  
-            # 2. Plot
             plot_path = os.path.join(results_dir, plot_filename)
             plot_results(econ_score, social_score, plot_path)
  

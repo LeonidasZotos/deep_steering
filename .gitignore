@@ -161,10 +161,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-deep_steering_env
+.deep_steering_env
 results/*
-!results/*.ipynb
-plots/*
-evaluation_descriptions/*
-settings.json
-*.out
+data/*
+.vscode/*

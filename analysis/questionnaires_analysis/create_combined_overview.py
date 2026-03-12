@@ -18,9 +18,11 @@ def parse_args() -> Dict[str, Any]:
         Dict[str, Any]: A dictionary of parsed arguments.
     """
     parser = argparse.ArgumentParser(description='Create a combined plot from a Political Compass test experiment.')
-    parser.add_argument('-e', '--experiment_name', type=str, required=True, help='Name of the experiment to plot, as defined in the setups file.')
+    parser.add_argument('-e', '--experiment_name', type=str, required=True, help='Name of the experiment to plot, as defined in the exp_configs.json file.')
     parser.add_argument('--scoring_method', type=str, choices=['max_prob', 'weighted'], default='max_prob', help='Method to use for scoring: "max_prob" or "weighted".')
-    parser.add_argument('--setups_file', type=str, default='experiments.json', help='Path to the JSON file with experiment setups.')
+    parser.add_argument('--exp_configs_path', type=str, default='exp_configs.json', help='Path to the JSON file with experiment setups.')
+    parser.add_argument('--results_dir', type=str, default='../../results', help='Path to the directory containing the results.')
+    
     return vars(parser.parse_args())
 
 
@@ -91,7 +93,8 @@ def main() -> None:
 
     experiment_name = args['experiment_name']
     scoring_method = args['scoring_method']
-    setups_file_path = args['setups_file']
+    setups_file_path = args['exp_configs_path']
+    base_results_dir = args['results_dir']
 
     # --- Load Setups ---
     if not os.path.exists(setups_file_path):
@@ -107,9 +110,7 @@ def main() -> None:
         return
 
     results_data = []
-    # Assuming the script is in src/questionnaires_analysis, results are in ../../results
-    base_results_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'results'))
-
+    
     for run_key, run_info in tqdm(experiment_setup.items(), desc=f"Processing experiment '{experiment_name}'"):
         experiment_id = run_info.get('experiment_id')
         description = run_info.get('description')
