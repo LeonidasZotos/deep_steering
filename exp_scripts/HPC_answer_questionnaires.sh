@@ -18,7 +18,7 @@ do
     do
         for persona in auth_left auth_right lib_left lib_right generic centrist
         do
-            python ./answer_questionnaire.py -qu political_compass -mo $model -ps $permutation_strategy -per $persona -bs 32
+            python ./answer_questionnaire.py -pq political_compass -mn $model -ps $permutation_strategy -per $persona -bs 32
         done
     done
 done
@@ -27,3 +27,7 @@ done
 python ../analysis/questionnaires_analysis/analyse_political_compass_results.py
 
 deactivate
+
+
+# to test you can use this:
+# python ./answer_questionnaire.py -pq political_compass -mn qwen3-4b-base -ps random -per generic -tm

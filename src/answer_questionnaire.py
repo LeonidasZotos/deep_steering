@@ -44,22 +44,22 @@ def parse_args() -> Dict[str, Any]:
     parser.add_argument('-tm', '--test_mode', action="store_true",
                         help='Test mode only uses 3 questions.', default=False)
     parser.add_argument('-qm', '--quiet_mode', action='store_true', help='Disable tqdm progress bars')
-    parser.add_argument('-qu', '--questionnaire', type=str,
-                        help='Quesionnaire to use (one of: "political_compass")', required=True)
-    parser.add_argument('-mo', '--model', type=str,
-                        help='Model Name', required=True)
-    parser.add_argument('-pc', '--prompt_context', type=str,
-                        help='Which prompt formulation to use, (no_context, context_before_instruction, context_after_instruction)', default="no_context")
-    parser.add_argument('-c', '--context_column', type=str,
-                        help='Column Name of optional context for each question (e.g., "question_context" or "" for no context)', default="")
-    parser.add_argument('-per', '--persona', type=str,
-                        help='A key to prompt the system from a file of personas. Default is "generic".', default='generic')
+    parser.add_argument('-pq', '--political_questionnaire', type=str,
+                        help='Political Quesionnaire to use', choices=['political_compass'], required=True)
+    parser.add_argument('-mn', '--model_name', type=str,
+                        help='Model Name', choices=list(MODEL_NAME_DICT.keys()), required=True)
+    parser.add_argument('-cc', '--context_column', type=str,
+                        help='Column Name of optional context for each question (e.g., "question_context" or "" for no context). This has to be a column in the questionnaire file.', default="")
+    parser.add_argument('-per', '--system_persona', type=str,
+                        help='The system prompt to use describing the political persona. Dynamically adjusts for base/chat models. Check corresponding personas_*.json file for possible personas.', default='generic')
+    parser.add_argument('-shot', '--n_shot_persona', type=str,
+                        help='Few shot examples suggesting political views. Embedded in the prompt. Check corresponding two_shot.json file for possible personas. Defaults to zero shot/no examples given.', default='')
     parser.add_argument('-np', '--number_permutations', type=int,
                         help='Number of choice permutations, defaults to 10. Use all combinations if there are fewer than the passed value. If it is likert scale, only two are used (original and reverse)', default=10)
     parser.add_argument('-ps', '--permutation_strategy', type=str, choices=['random', 'reverse'],
                         help='Strategy for permutations. "random" for random permutations, "reverse" for original and reversed order.', default='reverse')
     parser.add_argument('-bs', '--batch_size', type=int,
-                        help='Batch size for inference when using HuggingFace transformers. Default 64', default=64)
+                        help='Batch size for inference. Default is 64.', default=64)
 
     return dict(vars(parser.parse_args()))
 
@@ -88,6 +88,7 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
         Returns:
             List[pd.Series]: A list of rows, where each row represents a permutation of the answer choices.
         '''
+    
         choices_cols = [f'Answer_{c}' for c in string.ascii_uppercase[:10]
                      if f'Answer_{c}' in row and len(str(row[f'Answer_{c}'])) > 0 and row[f'Answer_{c}'] is not None and str(row[f'Answer_{c}']).lower() != 'nan']
         choices = [row[col] for col in choices_cols]
@@ -138,25 +139,25 @@ def extend_with_permutations(questionnaire: pd.DataFrame, args: Dict[str, Any]) 
         
         return rows
 
+    def add_question_with_options(row: pd.Series) -> str:
+            """
+            Constructs a string combining the question and its answer options.
+
+            Args:
+                row (pd.Series): A row from the questionnaire DataFrame.
+            Returns:
+                str: The formatted question string with options.
+            """
+            valid_letters = [c for c in string.ascii_uppercase[:10] if f'Answer_{c}' in row and len(str(row[f'Answer_{c}'])) > 0 and row[f'Answer_{c}'] is not None]
+            row['Question_With_Options'] = row['Question'] + " " + " ".join([f"{c}: {row[f'Answer_{c}']}" for c in valid_letters])
+            return row['Question_With_Options']
+    
     # Add column 'Question_With_Options' with the question and the answer choices
     all_new_rows = []
-    for index, row in tqdm(list(questionnaire.iterrows()), total=len(questionnaire), desc="Generating permutations", disable=args['quiet_mode']):
+    for _, row in tqdm(list(questionnaire.iterrows()), total=len(questionnaire), desc="Generating permutations", disable=args['quiet_mode']):
         permutations = generate_row_permutations(row)
         all_new_rows.extend(permutations)
     extended_questionnaire = pd.DataFrame(all_new_rows)
-
-    def add_question_with_options(row: pd.Series) -> str:
-        """
-        Constructs a string combining the question and its answer options.
-
-        Args:
-            row (pd.Series): A row from the questionnaire DataFrame.
-        Returns:
-            str: The formatted question string with options.
-        """
-        valid_letters = [c for c in string.ascii_uppercase[:10] if f'Answer_{c}' in row and len(str(row[f'Answer_{c}'])) > 0 and row[f'Answer_{c}'] is not None]
-        row['Question_With_Options'] = row['Question'] + " " + " ".join([f"{c}: {row[f'Answer_{c}']}" for c in valid_letters])
-        return row['Question_With_Options']
 
     extended_questionnaire['Question_With_Options'] = extended_questionnaire.apply(add_question_with_options, axis=1)
 
@@ -244,7 +245,8 @@ def generate_uncertainty_for_questionnaire(
     tokenizer: AutoTokenizer,
     questions_set: pd.DataFrame,
     args: Dict[str, Any],
-    persona: str = None
+    persona: str = None,
+    nshot_examples: str = None
 ) -> pd.DataFrame:
     """Calculates uncertainty measures for a set of questions and adds them to the DataFrame.
     
@@ -253,11 +255,12 @@ def generate_uncertainty_for_questionnaire(
         tokenizer (AutoTokenizer): The tokenizer instance.
         questions_set (pd.DataFrame): A DataFrame containing the questions and answer choices.
         args (Dict[str, Any]): A dictionary of script arguments.
-    
+        persona (str): An optional system persona to include in the prompt.
+        nshot_examples (str): Optional few-shot examples to include in the prompt.
     Returns:
         pd.DataFrame: The original DataFrame updated with uncertainty measure columns.
     """
-    def format_question_string(question_with_options: str, context: str = "", prompt_context: str = "no_context", is_base_model: bool = False) -> str:
+    def format_question_string(question_with_options: str, context: str = "", nshot_examples: str = None, is_base_model: bool = False) -> str:
         """
         Formats a question, choices, and context into a prompt string based on the specified style.
         Args:
@@ -268,24 +271,23 @@ def generate_uncertainty_for_questionnaire(
         Returns:
             prompt (str): A formatted string with the question and the answer choices
         """
+        nshot_examples = f"Examples: {nshot_examples}" if nshot_examples else ""
+        context = f"Background: {context}" if (context != "") else ""
+        
         if is_base_model:
-            # For base models, create a prompt that is more natural for next-token prediction.
             # The persona is already in 1st person ("I am...").
             prompt = f"""I will answer the following question by choosing the letter that best represents my view.
             Question: {question_with_options}\n Response:"""
-            # Context handling for base models can be simplified as part of the continuous text.
-            if context and prompt_context != "no_context":
-                # A simple way to include context for base models.
-                prompt = f"Background: {context}\n" + prompt
+            prompt = persona + "\n" + nshot_examples + "\n" + context + "\n" + prompt
 
         else: # For chat/instruct models
             prompt = f"""Below is a question. Choose the letter which best answers the question. Keep your response as brief as possible; just state the letter corresponding to your answer with no explanation.
             Question: {question_with_options}\n Response:"""
             
-            if prompt_context == "context_before_instruction":
-                prompt = f"""Consider this background knowledge:{context}.\n""" + prompt
-            elif prompt_context == "context_after_instruction":
-                prompt = prompt.replace("Response:", f"Remember that: {context}\nResponse:")
+            prompt = nshot_examples + "\n" + context + "\n" + prompt # For chat models the system instruction/persona is added through the chat template, not here.
+            
+        print("The prompt is: ", prompt, "\n")
+        
         return prompt
 
     def organise_uncertainty_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
@@ -319,24 +321,25 @@ def generate_uncertainty_for_questionnaire(
     
     extended_questions_set = extend_with_permutations(questions_set, args)
     formatted_prompts = []
-    is_base_model = 'base' in args['model']
+    is_base_model = 'base' in args['model_name']
 
     for idx, question_with_options in enumerate(extended_questions_set['Question_With_Options']):
         context = extended_questions_set[args['context_column']].iloc[idx] if args['context_column'] != "" else ""
         
         if is_base_model:
             # For base models, we create a single prompt string.
-            user_content = format_question_string(question_with_options, context,
-                                                  prompt_context=args['prompt_context'],
-                                                  is_base_model=True)
-            # The persona is prepended to the user content.
-            formatted_prompt = f"{persona}\n{user_content}"
+            formatted_prompt = format_question_string(question_with_options=question_with_options, 
+                                                      context=context,
+                                                      nshot_examples=nshot_examples,
+                                                      is_base_model=True)
+            
         else:
             # For chat models, we use the existing message format.
             messages = [
                 {"role": "system", "content": persona},
-                {"role": "user", "content": format_question_string(question_with_options, context,
-                                                                   prompt_context=args['prompt_context'],
+                {"role": "user", "content": format_question_string(question_with_options=question_with_options, 
+                                                                   context=context,
+                                                                   nshot_examples = nshot_examples,
                                                                    is_base_model=False)}
             ]
             formatted_prompt = tokenizer.apply_chat_template(
@@ -429,38 +432,6 @@ def generate_uncertainty_for_questionnaire(
     # This now also contains the uncertainty measures for each question
     return compressed_questionnaire
 
-def get_context_size_requirement(
-    questions_set: pd.DataFrame,
-    tokenizer: AutoTokenizer,
-    context_col_name: str,
-    margin: float = 0.25
-) -> int:
-    """
-    Calculates the required context size for the model based on the longest context in the dataset.
-
-    Args:
-        questions_set (pd.DataFrame): The DataFrame containing the questionnaire data.
-        tokenizer (AutoTokenizer): The tokenizer to use for encoding text.
-        context_col_name (str): The name of the column containing context strings.
-        margin (float): A safety margin to add to the calculated length.
-
-    Returns:
-        int: The calculated context size requirement in number of tokens.
-    """
-    if not context_col_name or context_col_name not in questions_set.columns:
-        print("No context column specified or found. Using default context size.")
-        return 4096 # Return a default value
-
-    # Find the index of the row with the maximum character count
-    max_char_index = questions_set[context_col_name].astype(str).apply(len).idxmax()
-    # Extract the context from that row
-    longest_context = questions_set.loc[max_char_index, context_col_name]
-    length_longest_context_tokenized = len(tokenizer.encode(longest_context))
-    length_longest_context_tokenized_with_margin = int(length_longest_context_tokenized * (1 + margin))
-    print("Longest context is ", length_longest_context_tokenized, " tokens. With Safety margin, that sets the context size to " , length_longest_context_tokenized_with_margin)
-    
-    return length_longest_context_tokenized_with_margin
-
 def export_results(
     results_dataframe: pd.DataFrame,
     args: Dict[str, Any],
@@ -482,15 +453,14 @@ def export_results(
     config = {
         "timestamp": timestamp,
         "test_mode": args['test_mode'],
-        "questionnaire": args['questionnaire'],
+        "questionnaire": args['political_questionnaire'],
         "model_name": model_name,
-        "model_type": "Base" if 'base' in args['model'] else "Chat",
-        "prompt_context": args['prompt_context'],
-        "context_column_name": args['context_column'],
-        "persona": args['persona'],
+        "model_type": "Base" if 'base' in args['model_name'] else "Chat",
+        "context_column": args['context_column'],
+        "persona": args['system_persona'],
+        "n_shot_persona": args['n_shot_persona'],
         "number_of_choice_permutations": args['number_permutations'],
         "permutation_strategy": args['permutation_strategy'],
-        "hf_batch_size": args['batch_size'],
     }
     with open(output_file_name.replace('results.csv', 'config.json'), 'w') as f:
         json.dump(config, f, indent=4)
@@ -503,7 +473,7 @@ def main() -> None:
     print("---------------Setting Up---------------")
 
     args = parse_args()
-    model_name_short = args['model']
+    model_name_short = args['model_name']
     model_name = MODEL_NAME_DICT[model_name_short]
     root_dir = "../"
     # If the timestamp already exists, wait a second and try again so we don't overwrite previous results
@@ -519,17 +489,27 @@ def main() -> None:
     personas_file = 'personas_base.json' if 'base' in model_name_short else 'personas_chat.json'
     with open(root_dir + 'misc/steering_techniques/prompting/' + personas_file, 'r') as f:
         personas = json.load(f)
-        persona = personas[args['persona']]['persona']
+        print("Found system persona specified in the personas file. Using the system prompt describing the political persona in the prompt.")
+        persona = personas[args['system_persona']]['persona']
+        
+    nshot_examples = '' # We only fill this with the examples if there is a nshot persona specified
+    # In contrast to personas, here we only have 1 file for both base/chat, as the examples are the same.
+    with open(root_dir + 'misc/steering_techniques/prompting/two_shot.json', 'r') as f:
+        nshot = json.load(f)
+        if args['n_shot_persona'] in nshot:
+            print("Found n-shot persona specified in the two_shot.json file. Using n-shot examples in the prompt.")
+            nshot_examples = nshot[args['n_shot_persona']]['examples']
+
 
     print("Running with specs:")
     print("Timestamp: ", timestamp)
     print("Test mode: ", args['test_mode'])
-    print("Questionnaire: ", args['questionnaire'])
+    print("Questionnaire: ", args['political_questionnaire'])
     print("Model: ", model_name)
     print("Model Type: ", "Base" if 'base' in model_name_short else "Chat/Instruction-Tuned")
-    print("Persona: ", args['persona'])
-    print("Prompt context: ", args['prompt_context'])
-    print("Context column name: ", args['context_column'])
+    print("System Persona: ", args['system_persona'])
+    print("N-shot Persona: ", args['n_shot_persona'])
+    print("Context column: ", args['context_column'])
     print("Number of choice permutations: ", args['number_permutations'])
     print("Output file name: ", output_file_name)
     print("Permutation strategy: ", args['permutation_strategy'])
@@ -539,7 +519,7 @@ def main() -> None:
     os.makedirs(root_dir + 'results/' + model_name.split("/")[1] + '/' + timestamp, exist_ok=True)
     
     print("------------Preparing Questionnaire------------")
-    if args['questionnaire'] == 'political_compass':
+    if args['political_questionnaire'] == 'political_compass':
         questionnaire_file_path = root_dir + 'data/political_compass.csv'
     
     questions_set = pd.read_csv(questionnaire_file_path)
@@ -563,7 +543,7 @@ def main() -> None:
 
     print("-------------Doing Inference-------------")
     questions_set_with_probs = generate_uncertainty_for_questionnaire(
-        model, tokenizer, questions_set, args, persona=persona)
+        model, tokenizer, questions_set, args, persona=persona, nshot_examples=nshot_examples)
 
     print("-------------Saving Results-------------")
     export_results(questions_set_with_probs, args, timestamp, model_name, output_file_name)
