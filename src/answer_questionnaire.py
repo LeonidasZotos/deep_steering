@@ -285,8 +285,6 @@ def generate_uncertainty_for_questionnaire(
             Question: {question_with_options}\n Response:"""
             
             prompt = nshot_examples + "\n" + context + "\n" + prompt # For chat models the system instruction/persona is added through the chat template, not here.
-            
-        print("The prompt is: ", prompt, "\n")
         
         return prompt
 
